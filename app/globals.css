@@ -1,0 +1,22 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background:
+    radial-gradient(1100px 600px at 90% -10%, rgba(123, 79, 231, 0.08), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(86, 180, 233, 0.06), transparent 60%),
+    #FAFAFC;
+  background-attachment: fixed;
+  color: #0F1635;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.font-w650 {
+  font-weight: 650;
+}
