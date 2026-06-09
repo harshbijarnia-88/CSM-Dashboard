@@ -29,6 +29,11 @@ export type CsmQuarterChartProps = {
     numerator: { label: string; field: string };
     denominator: { label: string; field: string };
   };
+  /** Optional row set used ONLY for the "Overall" formula footer. Useful
+   * when callers want the footer to reflect the full filtered universe
+   * (e.g. tileRows including Unattributed) while the per-CSM bars stay
+   * scoped to named CSMs in chartRows. Defaults to chartRows. */
+  formulaRows?: Row[];
 };
 
 type ChartDatum = { csm: string } & Record<string, string | number>;
@@ -38,7 +43,13 @@ function buildData(
   selectedQuarters: string[],
   metric: (rows: Row[]) => number,
 ): ChartDatum[] {
-  return CSM_LIST.map((csm) => {
+  // Only render CSMs that actually have rows in the current filter. Keeping
+  // the canonical CSM_LIST order so the bars don't reshuffle as filters
+  // narrow.
+  const present = new Set(
+    chartRows.map((r) => String(r[CSM_COL] ?? "")).filter(Boolean),
+  );
+  return CSM_LIST.filter((csm) => present.has(csm)).map((csm) => {
     const datum: ChartDatum = { csm };
     const rowsForCsm = chartRows.filter((r) => r[CSM_COL] === csm);
     for (const q of selectedQuarters) {
@@ -91,18 +102,23 @@ export function CsmQuarterChart({
   target,
   targetLabel,
   formula,
+  formulaRows,
 }: CsmQuarterChartProps) {
   const data = buildData(chartRows, selectedQuarters, metric);
   const yFmt = (v: number) => (kind === "percent" ? fmtPct(v) : fmtCurrency(v));
 
-  // Overall sum-then-divide totals for the rows visible in the chart.
+  // Overall sum-then-divide totals. Use formulaRows when provided (typically
+  // tileRows — the full filtered universe including Unattributed) so the
+  // header tiles and the "Overall:" line agree; fall back to chartRows
+  // (named-CSM scope) otherwise.
+  const overallRows = formulaRows ?? chartRows;
   const formulaTotals = formula
     ? (() => {
-        const num = chartRows.reduce(
+        const num = overallRows.reduce(
           (s, r) => s + (Number(r[formula.numerator.field]) || 0),
           0,
         );
-        const den = chartRows.reduce(
+        const den = overallRows.reduce(
           (s, r) => s + (Number(r[formula.denominator.field]) || 0),
           0,
         );
@@ -112,7 +128,7 @@ export function CsmQuarterChart({
     : null;
 
   return (
-    <div className="relative flex flex-col overflow-hidden rounded-xl border border-line bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,22,53,0.04)] transition hover:shadow-[0_4px_16px_-6px_rgba(15,22,53,0.08)]">
+    <div className="relative flex flex-1 flex-col overflow-hidden rounded-xl border border-line bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,22,53,0.04)] transition hover:shadow-[0_4px_16px_-6px_rgba(15,22,53,0.08)]">
       <div className="mb-1 text-[0.66rem] font-semibold uppercase tracking-[0.12em] text-ink-subtle">
         {title}
       </div>
@@ -138,7 +154,10 @@ export function CsmQuarterChart({
           </span>
         </div>
       ) : null}
-      <div className="h-[300px]">
+      {/* Flex-grow chart area so the card stretches to its pod row's height
+          (the donut card next door is taller because of its tip + scope
+          notes — grid stretch will pull this card to match). */}
+      <div className="min-h-[280px] flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 22, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid stroke="#f3f4f6" vertical={false} />

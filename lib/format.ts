@@ -7,6 +7,14 @@ export function fmtCurrency(v: number): string {
   return `${sign}$${Math.round(abs)}`;
 }
 
+/** Full-precision currency with thousands separators — used as a hover
+ * tooltip on the abbreviated tile values so users can see the exact $. */
+export function fmtCurrencyFull(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  const sign = v < 0 ? "-" : "";
+  return `${sign}$${Math.round(Math.abs(v)).toLocaleString("en-US")}`;
+}
+
 export function fmtPct(v: number): string {
   if (!Number.isFinite(v)) return "—";
   return `${(v * 100).toFixed(1)}%`;

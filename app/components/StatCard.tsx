@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { fmtCurrency, fmtPct } from "@/lib/format";
+import { fmtCurrency, fmtCurrencyFull, fmtPct } from "@/lib/format";
 
 export type StatCardTone =
   | "red-when-positive"
@@ -13,6 +13,12 @@ export type StatCardProps = {
   kind: "percent" | "currency";
   tone?: StatCardTone;
   subtitle?: string;
+  /** Optional secondary value shown directly below the main value in a
+   * smaller, muted style. Use for "the $ that backs this %" reads. */
+  secondary?: string;
+  /** Optional raw $ amount backing `secondary`. When provided, hover shows
+   * the full-precision dollar value as a native tooltip. */
+  secondaryRaw?: number;
   className?: string;
   /**
    * When set, renders a small progress bar inside the card showing how close
@@ -27,6 +33,9 @@ export type StatCardProps = {
   progress?: {
     achieved: number;
     target: number;
+    /** Word used in the left-hand label, e.g. "forecasted" (default) or
+     * "achieved". Defaults to "forecasted" to match the projected gap tiles. */
+    verb?: string;
   };
 };
 
@@ -50,6 +59,8 @@ export function StatCard({
   kind,
   tone,
   subtitle,
+  secondary,
+  secondaryRaw,
   className,
   progress,
 }: StatCardProps) {
@@ -86,15 +97,31 @@ export function StatCard({
       </div>
       <div
         className={clsx(
-          "text-[2rem] font-w650 leading-[1.05] tabular-nums tracking-tight",
-          // With subtitle: keep a small gap after the label.
-          // Without: vertically center the value in the remaining card space.
-          subtitle ? "mt-2" : "my-auto",
+          "group/value relative inline-flex w-fit items-center text-[2rem] font-w650 leading-[1.05] tabular-nums tracking-tight",
+          // With subtitle or secondary: keep a small gap after the label.
+          // Without either: vertically center the value in the remaining space.
+          subtitle || secondary ? "mt-2" : "my-auto",
           color,
         )}
       >
         {display}
+        {kind === "currency" && Number.isFinite(value) ? (
+          <ValueTooltip text={fmtCurrencyFull(value)} />
+        ) : null}
       </div>
+      {secondary ? (
+        <div
+          className={clsx(
+            "group/secondary relative mt-0.5 inline-flex w-fit items-center text-[0.95rem] font-semibold leading-none tabular-nums",
+            color,
+          )}
+        >
+          {secondary}
+          {typeof secondaryRaw === "number" && Number.isFinite(secondaryRaw) ? (
+            <ValueTooltip text={fmtCurrencyFull(secondaryRaw)} parentGroup="secondary" />
+          ) : null}
+        </div>
+      ) : null}
       {subtitle ? (
         <div className="mt-1 text-[0.7rem] leading-snug text-ink-subtle">
           {subtitle}
@@ -104,6 +131,7 @@ export function StatCard({
         <ProgressBar
           achieved={progress.achieved}
           target={progress.target}
+          verb={progress.verb ?? "forecasted"}
         />
       ) : null}
     </div>
@@ -113,9 +141,11 @@ export function StatCard({
 function ProgressBar({
   achieved,
   target,
+  verb,
 }: {
   achieved: number;
   target: number;
+  verb: string;
 }) {
   const safeTarget = Number.isFinite(target) && target > 0 ? target : 1;
   const safeAchieved = Number.isFinite(achieved) ? achieved : 0;
@@ -137,7 +167,7 @@ function ProgressBar({
       </div>
       <div className="flex items-center justify-between text-[0.62rem] tabular-nums text-ink-subtle">
         <span>
-          <span className="text-success">{achievedActual}%</span> achieved
+          <span className="text-success">{achievedActual}%</span> {verb}
         </span>
         <span>
           {overshoot ? (
@@ -151,5 +181,36 @@ function ProgressBar({
         </span>
       </div>
     </div>
+  );
+}
+
+/** Instant-feedback floating tooltip for currency tiles. Uses Tailwind's
+ * named-group syntax so the main value and secondary value can hover
+ * independently without one triggering the other. */
+function ValueTooltip({
+  text,
+  parentGroup = "value",
+}: {
+  text: string;
+  parentGroup?: "value" | "secondary";
+}) {
+  const visibility =
+    parentGroup === "value"
+      ? "opacity-0 group-hover/value:opacity-100 group-focus-within/value:opacity-100"
+      : "opacity-0 group-hover/secondary:opacity-100 group-focus-within/secondary:opacity-100";
+  return (
+    <span
+      role="tooltip"
+      className={clsx(
+        "pointer-events-none absolute -top-2 left-1/2 z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[0.7rem] font-medium tabular-nums text-white shadow-lg transition-opacity duration-100",
+        visibility,
+      )}
+    >
+      {text}
+      <span
+        aria-hidden
+        className="absolute left-1/2 top-full -mt-px h-1.5 w-1.5 -translate-x-1/2 rotate-45 bg-ink"
+      />
+    </span>
   );
 }

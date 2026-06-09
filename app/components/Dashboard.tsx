@@ -10,15 +10,17 @@ import {
   fyQuarters,
 } from "@/lib/constants";
 import type { Row } from "@/lib/data/types";
+import type { ForecastCategory } from "@/lib/data/fetchExpansion";
 import { applyFilters, distinctQuarters } from "@/lib/filters";
 import { sum } from "@/lib/metrics";
+import { ExpansionOpportunitiesTable } from "./ExpansionOpportunitiesTable";
 import { Filters } from "./Filters";
-import { Header } from "./Header";
-import { NrrGapOpportunities } from "./NrrGapOpportunities";
 import { OpportunitiesTable } from "./OpportunitiesTable";
+import { StandaloneTopBar } from "./StandaloneTopBar";
 import { SectionA } from "./SectionA";
 import { SectionB } from "./SectionB";
 import { SectionPostmaster } from "./SectionPostmaster";
+import { SummaryPostmaster } from "./SummaryPostmaster";
 
 export type DashboardProps = {
   rows: Row[];
@@ -49,6 +51,21 @@ export function Dashboard({ rows, fetchedAt, expansionRows = [] }: DashboardProp
 
   const [quarterSel, setQuarterSel] = useState<string[]>(defaultQuarterSel);
   const [csmSel, setCsmSel] = useState<string[]>([ALL_CSM]);
+  // Donut → table linkage: clicking a slice on the Expansion donut toggles
+  // membership in this set, which the table picks up and filters by.
+  const [expansionCategoryFilter, setExpansionCategoryFilter] = useState<
+    Set<ForecastCategory>
+  >(() => new Set());
+  const toggleExpansionCategory = (cat: ForecastCategory) => {
+    setExpansionCategoryFilter((curr) => {
+      const next = new Set(curr);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+  const clearExpansionCategories = () =>
+    setExpansionCategoryFilter(new Set());
 
   const { tileRows, chartRows } = useMemo(
     () => applyFilters(rows, quarterSel, csmSel),
@@ -80,17 +97,34 @@ export function Dashboard({ rows, fetchedAt, expansionRows = [] }: DashboardProp
     () => sum(tileRows, "To_include_in_NRR"),
     [tileRows],
   );
+  const renewalBase = useMemo(
+    () => sum(tileRows, "NRR_Base"),
+    [tileRows],
+  );
 
   return (
-    <div className="mx-auto flex max-w-[1500px] flex-col gap-8 px-6 py-10">
+    <div className="mx-auto flex max-w-[1500px] flex-col gap-8 px-6 pt-10 pb-0">
       <SectionPostmaster />
-      <div data-section="Header">
-        <Header
-          fetchedAt={fetchedAt}
-          totalProjectedNrr={totalProjectedNrr}
-          rowCount={tileRows.length}
-        />
-      </div>
+      <SummaryPostmaster
+        projectedArr={totalProjectedNrr}
+        renewalBase={renewalBase}
+        rowCount={tileRows.length}
+        fetchedAt={fetchedAt}
+      />
+      {/* Standalone-only top bar — mirrors the StickyTopBar that the
+          revenue-os shell injects above the iframe. Renders nothing when
+          embedded, so the parent shell doesn't double-render. */}
+      <StandaloneTopBar
+        projectedArr={totalProjectedNrr}
+        renewalBase={renewalBase}
+        rowCount={tileRows.length}
+        fetchedAt={fetchedAt}
+      />
+      {/* The original in-iframe Header is gone — the revenue-os shell now
+          owns the combined sticky navigation + summary bar (its values stream
+          in over postMessage). Keeping a zero-height anchor so existing
+          deep-links to the top still resolve. */}
+      <div data-section="Header" className="sr-only" />
       <div data-section="Filters">
         <Filters
           quarterCounts={quarterCounts}
@@ -110,10 +144,21 @@ export function Dashboard({ rows, fetchedAt, expansionRows = [] }: DashboardProp
           expansionRows={expansionRows}
           quarterSel={quarterSel}
           csmSel={csmSel}
+          expansionCategoryFilter={expansionCategoryFilter}
+          onToggleExpansionCategory={toggleExpansionCategory}
+          middleSlot={
+            <div data-section="Expansion Opps">
+              <ExpansionOpportunitiesTable
+                rows={tileRows}
+                selectedCategories={expansionCategoryFilter}
+                onClearCategories={clearExpansionCategories}
+              />
+            </div>
+          }
         />
       </div>
-      <div data-section="NRR Gap Deals">
-        <NrrGapOpportunities rows={tileRows} />
+      <div data-section="Renewal Opportunities">
+        <OpportunitiesTable rows={tileRows} />
       </div>
       <div data-section="Actuals">
         <SectionB
@@ -121,9 +166,6 @@ export function Dashboard({ rows, fetchedAt, expansionRows = [] }: DashboardProp
           chartRows={chartRows}
           selectedQuarters={effectiveQuarters}
         />
-      </div>
-      <div data-section="Opportunities">
-        <OpportunitiesTable rows={tileRows} />
       </div>
     </div>
   );

@@ -60,11 +60,22 @@ export async function fetchExpansion(): Promise<FetchExpansionResult> {
  * Map an SF Stage value to a Forecast Category bucket — mirrors the SF
  * dashboard's "Expansion Opps 2026 - Q1-Q4" donut grouping.
  */
-export type ForecastCategory = "Pipeline" | "Commit" | "Closed" | "Best Case" | "Omitted";
+export type ForecastCategory =
+  | "Pipeline"
+  | "Commit"
+  | "Closed Won"
+  | "Closed Lost"
+  | "Best Case"
+  | "Omitted";
 
 export function forecastCategory(stage: string): ForecastCategory {
   const s = (stage ?? "").toLowerCase();
-  if (s.includes("closed")) return "Closed";
+  // Order matters: check the more specific "closed won" before the broader
+  // "closed" / "dead" fallbacks so a "Closed Won" stage doesn't get caught by
+  // the lost branch first.
+  if (s.includes("closed won")) return "Closed Won";
+  if (s.includes("closed") || s.includes("dead") || s.includes("churn"))
+    return "Closed Lost";
   if (s.includes("contracting") || s.includes("negotiat") || s.includes("commit"))
     return "Commit";
   if (s.includes("best case") || s.includes("most likely")) return "Best Case";

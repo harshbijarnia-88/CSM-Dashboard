@@ -12,6 +12,7 @@ import { fmtCurrency } from "@/lib/format";
 
 type SortKey =
   | "Deal Name"
+  | "effective_csm"
   | "Type"
   | "Stage"
   | "Renewal Status"
@@ -24,6 +25,7 @@ type SortDir = "asc" | "desc";
 
 const COLS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "Deal Name", label: "Deal" },
+  { key: "effective_csm", label: "CSM" },
   { key: "Type", label: "Type" },
   { key: "Stage", label: "Stage" },
   { key: "Renewal Status", label: "Renewal Stage" },
@@ -200,6 +202,9 @@ export function NrrGapOpportunities({ rows }: NrrGapOpportunitiesProps) {
                             {account}
                           </div>
                         ) : null}
+                      </td>
+                      <td className="px-4 py-2.5 align-top text-ink-muted">
+                        {String(r["effective_csm"] ?? "") || "—"}
                       </td>
                       <td className="px-4 py-2.5 align-top text-ink-muted">
                         {type || "—"}

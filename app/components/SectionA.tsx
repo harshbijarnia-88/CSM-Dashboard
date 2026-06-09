@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type { Row } from "@/lib/data/types";
 import {
   arrExpectedChurn,
@@ -14,10 +14,13 @@ import {
   pctBookInRisk,
   pctGrrGap,
   pctNrrGap,
+  sum,
 } from "@/lib/metrics";
+import { fmtCurrency } from "@/lib/format";
 import { ChartCollapseToggle } from "./ChartCollapseToggle";
 import { CsmQuarterChart } from "./CsmQuarterChart";
 import { ExpansionDonut } from "./ExpansionDonut";
+import type { ForecastCategory } from "@/lib/data/fetchExpansion";
 import { SectionHeader } from "./SectionHeader";
 import { StatCard } from "./StatCard";
 
@@ -28,6 +31,12 @@ export type SectionAProps = {
   expansionRows: Row[];
   quarterSel: string[];
   csmSel: string[];
+  expansionCategoryFilter: Set<ForecastCategory>;
+  onToggleExpansionCategory: (cat: ForecastCategory) => void;
+  /** Optional content wedged between the top pod row (NRR + Expansion) and
+   * the bottom pod row (GRR + Risk). Used to dock the Expansion
+   * Opportunities table directly under the expansion donut. */
+  middleSlot?: ReactNode;
 };
 
 export function SectionA({
@@ -37,8 +46,11 @@ export function SectionA({
   expansionRows,
   quarterSel,
   csmSel,
+  expansionCategoryFilter,
+  onToggleExpansionCategory,
+  middleSlot,
 }: SectionAProps) {
-  const [chartsCollapsed, setChartsCollapsed] = useState(false);
+  const [chartsCollapsed, setChartsCollapsed] = useState(true);
   return (
     <section className="rounded-2xl bg-white/40 p-5 ring-1 ring-line/60 backdrop-blur-sm">
       <SectionHeader
@@ -53,9 +65,12 @@ export function SectionA({
         Projected & Gaps
       </SectionHeader>
 
-      {/* 2x2 pod grid. Order:
-            1. Projected NRR%      |  2. Expansion Opps
-            3. Projected GRR%      |  4. % Book in Risk
+      {/* Two stacked pod rows with an optional slot wedged between them so
+          the Expansion Opportunities table can dock directly under the
+          expansion donut. Order:
+            Row A: Projected NRR%   |  Expansion Opps   (charts)
+            Slot:  Expansion Opportunities table
+            Row B: Projected GRR%   |  % Book in Risk   (charts)
           Each pod = supporting tiles in a row on top, chart filling below. */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Pod 1 — NRR */}
@@ -84,6 +99,7 @@ export function SectionA({
               title="Projected NRR%"
               metric={nrrPct}
               chartRows={chartRows}
+              formulaRows={tileRows}
               selectedQuarters={selectedQuarters}
               kind="percent"
               target={1.1}
@@ -104,6 +120,8 @@ export function SectionA({
               value={embeddedRenewalUpliftPct(tileRows)}
               kind="percent"
               tone="green"
+              secondary={fmtCurrency(sum(tileRows, "Embedded_renewal_uplift_amt"))}
+              secondaryRaw={sum(tileRows, "Embedded_renewal_uplift_amt")}
               subtitle="Embedded Renewal % Uplift"
             />
             <StatCard
@@ -111,7 +129,9 @@ export function SectionA({
               value={expansionPctRenewalBase(tileRows)}
               kind="percent"
               tone="green"
-              subtitle="Expansion as % of Renewal Base"
+              secondary={fmtCurrency(sum(tileRows, "Expansion_contri"))}
+              secondaryRaw={sum(tileRows, "Expansion_contri")}
+              subtitle="Expansion as % of Renewal Base · Commit + Closed-Won only"
             />
           </div>
           {chartsCollapsed ? null : (
@@ -119,10 +139,16 @@ export function SectionA({
               rows={expansionRows}
               quarterSel={quarterSel}
               csmSel={csmSel}
+              selectedCategories={expansionCategoryFilter}
+              onCategoryClick={onToggleExpansionCategory}
             />
           )}
         </div>
+      </div>
 
+      {middleSlot ? <div className="mt-5">{middleSlot}</div> : null}
+
+      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Pod 3 — GRR */}
         <div className="flex flex-col gap-3">
           <div className="grid min-h-[140px] grid-cols-2 gap-3 [&>*]:h-full">
@@ -149,6 +175,7 @@ export function SectionA({
               title="Projected GRR%"
               metric={grrPct}
               chartRows={chartRows}
+              formulaRows={tileRows}
               selectedQuarters={selectedQuarters}
               kind="percent"
               target={0.95}
@@ -188,6 +215,7 @@ export function SectionA({
               title="% Book in Risk"
               metric={pctBookInRisk}
               chartRows={chartRows}
+              formulaRows={tileRows}
               selectedQuarters={selectedQuarters}
               kind="percent"
             />

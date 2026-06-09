@@ -69,6 +69,14 @@ export const grrGapDollars = (rows: Row[]) =>
 export const nrrGapDollars = (rows: Row[]) =>
   NRR_TARGET * sum(rows, "Base_GRR") - sum(rows, "To_include_in_NRR");
 
+// $ remaining to hit GRR target based on YTD GRR Actuals
+export const grrActualsGapDollars = (rows: Row[]) =>
+  GRR_TARGET * sum(rows, "Base_GRR") - sum(rows, "GRR_actuals");
+
+// $ remaining to hit NRR target based on YTD NRR Actuals
+export const nrrActualsGapDollars = (rows: Row[]) =>
+  NRR_TARGET * sum(rows, "NRR_Base") - sum(rows, "NRR_actuals");
+
 export const arrHighRiskRenewal = (rows: Row[]) =>
   sum(rows, "ARR_High_Risk_Renewal");
 
@@ -81,6 +89,14 @@ export const arrInRisk = (rows: Row[]) =>
   sum(rows, "ARR_High_Risk_Renewal") + sum(rows, "ARR_Expected_Churn");
 
 export const closedWonRenewal = (rows: Row[]) => sum(rows, "closed_won_ARR");
+
+// Expansion closed-won = NRR Actuals − Closed-Won Renewal. NRR_actuals is the
+// total closed-won ARR booked (renewal + expansion); closed_won_ARR is the
+// renewals-only slice. Computed from the same actuals columns the NRR%
+// numerator uses so the tile's combined value always reconciles with the
+// "NRR Actuals" number shown elsewhere in this section.
+export const closedWonExpansion = (rows: Row[]) =>
+  Math.max(0, sum(rows, "NRR_actuals") - sum(rows, "closed_won_ARR"));
 
 // Prior-contract-value of opps already lost — the dollar leakage from
 // renewals that did not renew.

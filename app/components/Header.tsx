@@ -6,6 +6,7 @@ import { fmtCurrency } from "@/lib/format";
 export type HeaderProps = {
   fetchedAt: string;
   totalProjectedNrr: number;
+  renewalBase: number;
   rowCount: number;
 };
 
@@ -20,7 +21,12 @@ function relTime(iso: string, now: number): string {
   return `${hrs} hours ago`;
 }
 
-export function Header({ fetchedAt, totalProjectedNrr, rowCount }: HeaderProps) {
+export function Header({
+  fetchedAt,
+  totalProjectedNrr,
+  renewalBase,
+  rowCount,
+}: HeaderProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -50,15 +56,28 @@ export function Header({ fetchedAt, totalProjectedNrr, rowCount }: HeaderProps) 
           <span className="ml-2 text-ink-subtle">· Updated {relTime(fetchedAt, now)}</span>
         </div>
       </div>
-      <div className="rounded-xl border border-brand-200/70 bg-gradient-to-br from-brand-500 to-brand-700 px-5 py-4 text-white shadow-[0_8px_24px_-12px_rgba(80,37,176,0.55)]">
-        <div className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-brand-100/80">
-          Total Projected NRR
+      <div className="flex flex-col gap-3 sm:flex-row sm:gap-3">
+        <div className="rounded-xl border border-brand-200/70 bg-gradient-to-br from-brand-500 to-brand-700 px-5 py-4 text-white shadow-[0_8px_24px_-12px_rgba(80,37,176,0.55)]">
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-brand-100/80">
+            Projected ARR
+          </div>
+          <div className="mt-1 text-[2rem] font-w650 leading-none">
+            {fmtCurrency(totalProjectedNrr)}
+          </div>
+          <div className="mt-1 text-[0.72rem] text-brand-100/80">
+            {rowCount.toLocaleString()} opp{rowCount === 1 ? "" : "s"} in selection
+          </div>
         </div>
-        <div className="mt-1 text-[2rem] font-w650 leading-none">
-          {fmtCurrency(totalProjectedNrr)}
-        </div>
-        <div className="mt-1 text-[0.72rem] text-brand-100/80">
-          {rowCount.toLocaleString()} opp{rowCount === 1 ? "" : "s"} in selection
+        <div className="rounded-xl border border-brand-200/70 bg-gradient-to-br from-brand-700 to-brand-900 px-5 py-4 text-white shadow-[0_8px_24px_-12px_rgba(80,37,176,0.55)]">
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-brand-100/80">
+            Renewal Base
+          </div>
+          <div className="mt-1 text-[2rem] font-w650 leading-none">
+            {fmtCurrency(renewalBase)}
+          </div>
+          <div className="mt-1 text-[0.72rem] text-brand-100/80">
+            Prior-period ARR · NRR_Base
+          </div>
         </div>
       </div>
     </header>
