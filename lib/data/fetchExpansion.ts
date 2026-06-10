@@ -62,23 +62,48 @@ export async function fetchExpansion(): Promise<FetchExpansionResult> {
  */
 export type ForecastCategory =
   | "Pipeline"
+  | "Most Likely"
   | "Commit"
   | "Closed Won"
   | "Closed Lost"
-  | "Best Case"
   | "Omitted";
 
 export function forecastCategory(stage: string): ForecastCategory {
   const s = (stage ?? "").toLowerCase();
-  // Order matters: check the more specific "closed won" before the broader
-  // "closed" / "dead" fallbacks so a "Closed Won" stage doesn't get caught by
-  // the lost branch first.
+  // Stage-only fallback used when the SF Forecast Category column is empty.
+  // Order matters: "closed won" is checked before the broader "closed" /
+  // "dead" fallbacks so a Closed Won stage doesn't get caught by the lost
+  // branch first.
   if (s.includes("closed won")) return "Closed Won";
   if (s.includes("closed") || s.includes("dead") || s.includes("churn"))
     return "Closed Lost";
   if (s.includes("contracting") || s.includes("negotiat") || s.includes("commit"))
     return "Commit";
-  if (s.includes("best case") || s.includes("most likely")) return "Best Case";
+  if (s.includes("most likely") || s.includes("best case")) return "Most Likely";
   if (s.includes("omitted")) return "Omitted";
   return "Pipeline";
+}
+
+/**
+ * Authoritative forecast-category resolver — reads SF's "Forecast Category"
+ * column when present, then splits SF's `Closed` bucket into Closed Won vs
+ * Closed Lost using Stage. Falls back to the stage-based heuristic when the
+ * SF column is empty.
+ */
+export function forecastCategoryFromRow(r: Row): ForecastCategory {
+  const sfCat = String(r["Forecast Category"] ?? "").trim();
+  const stage = String(r["Stage"] ?? "");
+  const stageLower = stage.toLowerCase();
+  if (sfCat) {
+    // SF's "Closed" forecast bucket spans both won and lost — split by stage
+    // so the donut surfaces them as separate slices.
+    if (sfCat.toLowerCase() === "closed") {
+      return stageLower.includes("closed won") ? "Closed Won" : "Closed Lost";
+    }
+    if (sfCat === "Commit") return "Commit";
+    if (sfCat === "Pipeline") return "Pipeline";
+    if (sfCat === "Omitted") return "Omitted";
+    if (sfCat === "Most Likely" || sfCat === "Best Case") return "Most Likely";
+  }
+  return forecastCategory(stage);
 }

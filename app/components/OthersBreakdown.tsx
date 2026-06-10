@@ -5,14 +5,10 @@ import clsx from "clsx";
 import type { Row } from "@/lib/data/types";
 import { fmtCurrency } from "@/lib/format";
 import {
-  BUCKETS,
   BUCKET_COLOR,
-  BUCKET_LABEL,
   classifyBucket,
   type Bucket,
 } from "./OpportunitiesSummary";
-
-const HEALTHY_BUCKETS: Bucket[] = ["renew", "upgrade", "downgrade"];
 
 function toAmount(v: unknown): number {
   if (v == null) return 0;
@@ -146,24 +142,6 @@ export function OthersBreakdown({
     };
   }, [rows]);
 
-  // Healthy vs Other roll-up (folded in from the previous OpportunitiesSummary
-  // tile so the panel covers both the click-to-filter cards and the overall
-  // renewal health snapshot in a single section).
-  const categorizedAmount = BUCKETS.reduce(
-    (acc, b) => acc + bucketAmount[b.key],
-    0,
-  );
-  const healthyAmount = HEALTHY_BUCKETS.reduce(
-    (acc, k) => acc + bucketAmount[k],
-    0,
-  );
-  const healthyCount = HEALTHY_BUCKETS.reduce(
-    (acc, k) => acc + bucketCount[k],
-    0,
-  );
-  const healthyShare =
-    categorizedAmount > 0 ? healthyAmount / categorizedAmount : 0;
-
   if (otherCount === 0) return null;
 
   const clickable = Boolean(onSelectStatus);
@@ -208,20 +186,28 @@ export function OthersBreakdown({
           <span aria-hidden className="mt-px text-amber-600">💡</span>
           <span>
             Tip: Select{" "}
-            <span className="font-semibold">High Risk Renewal</span> and{" "}
-            <span className="font-semibold">Expected Churn</span> to see open
-            opportunities likely driving the NRR gap.
+            <span className="font-semibold">High Risk Renewal</span>,{" "}
+            <span className="font-semibold">Expected Churn</span>, and{" "}
+            <span className="font-semibold">Likely to Downgrade</span> to see
+            the open opportunities that are likely driving the NRR gap.
           </span>
         </div>
       ) : null}
 
+      {(() => {
+        // Hide the "Unspecified" card — rows without a Renewal Status still
+        // roll into the panel totals + healthy-share math, but the empty
+        // bucket itself doesn't get its own clickable card.
+        const visibleGroups = groups.filter((g) => g.status !== "Unspecified");
+        if (visibleGroups.length === 0) return null;
+        return (
       <div
         className="grid gap-2"
         style={{
-          gridTemplateColumns: `repeat(${groups.length}, minmax(0, 1fr))`,
+          gridTemplateColumns: `repeat(${visibleGroups.length}, minmax(0, 1fr))`,
         }}
       >
-        {groups.map((g) => {
+        {visibleGroups.map((g) => {
           const share = otherTotal > 0 ? g.amount / otherTotal : 0;
           const color = BUCKET_COLOR[g.bucket];
           const isSelected = selectedStatuses?.has(g.status) ?? false;
@@ -345,95 +331,9 @@ export function OthersBreakdown({
           );
         })}
       </div>
+        );
+      })()}
 
-      {/* Healthy vs Other roll-up — folded in from the previous separate
-          tile so the panel covers both interactive filtering and the overall
-          renewal health snapshot. */}
-      {categorizedAmount > 0 ? (
-        <div className="mt-4 flex flex-col gap-2 border-t border-line/70 pt-3">
-          <div className="flex items-center justify-between text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-ink-muted">
-            <span>Projected Renewal ARR by Forecasted Renewal Status</span>
-            <span className="tabular-nums text-ink-subtle">
-              {fmtCurrency(categorizedAmount)} categorized
-            </span>
-          </div>
-          <div className="flex items-end gap-4">
-            <div>
-              <div className="text-[1.65rem] font-w650 leading-none text-success">
-                {(healthyShare * 100).toFixed(1)}%
-              </div>
-              <div className="text-[0.7rem] text-ink-subtle">
-                {healthyCount} opps · {fmtCurrency(healthyAmount)} projected to
-                renew
-              </div>
-              <div className="text-[0.66rem] text-ink-subtle">
-                Renew + Upgrade + Downgrade
-              </div>
-            </div>
-            <div className="flex flex-1 flex-col gap-1">
-              <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-100 ring-1 ring-inset ring-line">
-                {BUCKETS.map((b) => {
-                  const w = (bucketAmount[b.key] / categorizedAmount) * 100;
-                  if (w <= 0) return null;
-                  return (
-                    <div
-                      key={b.key}
-                      className="h-full"
-                      style={{ width: `${w}%`, backgroundColor: b.color }}
-                      title={`${b.label}: ${fmtCurrency(bucketAmount[b.key])}`}
-                    />
-                  );
-                })}
-              </div>
-              {healthyShare > 0 ? (
-                <div className="relative h-3">
-                  <div
-                    className="absolute left-0 flex items-center"
-                    style={{ width: `${healthyShare * 100}%` }}
-                  >
-                    <span
-                      aria-hidden
-                      className="mr-1 h-px flex-1 bg-success/40"
-                    />
-                    <span className="text-[0.6rem] font-medium uppercase tracking-[0.08em] text-success">
-                      Projected to Renew
-                    </span>
-                    <span aria-hidden className="ml-1 h-px flex-1 bg-success/40" />
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-          {bucketAmount.unspecified > 0 ? (
-            <div className="text-[0.68rem] text-ink-subtle">
-              <span className="font-medium text-ink-muted">
-                {bucketCount.unspecified}
-              </span>{" "}
-              opp{bucketCount.unspecified === 1 ? "" : "s"} ·{" "}
-              {fmtCurrency(bucketAmount.unspecified)} have no renewal status set
-              and are excluded from the split.
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line/70 pt-2 text-[0.7rem] text-ink-muted">
-        <span className="text-ink-subtle">Color by bucket:</span>
-        {(
-          ["renew", "upgrade", "downgrade", "risk", "churn", "unspecified"] as Bucket[]
-        ).map(
-          (b) => (
-            <span key={b} className="inline-flex items-center gap-1.5">
-              <span
-                aria-hidden
-                className="inline-block h-2 w-2 rounded-full"
-                style={{ backgroundColor: BUCKET_COLOR[b] }}
-              />
-              {BUCKET_LABEL[b]}
-            </span>
-          ),
-        )}
-      </div>
     </div>
   );
 }

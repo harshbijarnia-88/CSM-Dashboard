@@ -27,4 +27,5 @@ export const RAW_NUMERIC_COLS = [
   "ARR_PriorCV_churned_c",
   "Embedded_renewal_uplift_amt",
   "closed_won_ARR",
+  "Upgrade/Downgrade Amount",
 ] as const;

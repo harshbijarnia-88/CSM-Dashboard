@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import {
   Cell,
-  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -12,7 +11,7 @@ import {
 import { ALL_CSM, CSM_COL, QUARTER_COL } from "@/lib/constants";
 import type { Row } from "@/lib/data/types";
 import {
-  forecastCategory,
+  forecastCategoryFromRow,
   type ForecastCategory,
 } from "@/lib/data/fetchExpansion";
 import { fmtCurrency } from "@/lib/format";
@@ -30,7 +29,7 @@ export type ExpansionDonutProps = {
 
 const CATEGORY_ORDER: ForecastCategory[] = [
   "Pipeline",
-  "Best Case",
+  "Most Likely",
   "Commit",
   "Closed Won",
   "Closed Lost",
@@ -39,7 +38,7 @@ const CATEGORY_ORDER: ForecastCategory[] = [
 
 const CATEGORY_COLORS: Record<ForecastCategory, string> = {
   Pipeline: "#1f77b4",
-  "Best Case": "#3a92d4",
+  "Most Likely": "#3a92d4",
   Commit: "#56b4e9",
   "Closed Won": "#059669",
   "Closed Lost": "#DC2626",
@@ -81,7 +80,7 @@ export function ExpansionDonut({
 
     const buckets = new Map<ForecastCategory, Segment>();
     for (const r of pool) {
-      const cat = forecastCategory(String(r["Stage"] ?? ""));
+      const cat = forecastCategoryFromRow(r);
       const amount = toAmount(r["Amount"]);
       let b = buckets.get(cat);
       if (!b) {
@@ -92,8 +91,12 @@ export function ExpansionDonut({
       b.count += 1;
     }
 
-    const segments = CATEGORY_ORDER.filter((c) => buckets.has(c)).map(
-      (c) => buckets.get(c)!,
+    // Emit ALL CATEGORY_ORDER entries — empty categories carry value=0/count=0
+    // so they still show up in the legend below the chart. Pie slices are
+    // filtered to non-zero downstream so the donut itself doesn't render
+    // invisible cells.
+    const segments = CATEGORY_ORDER.map(
+      (c) => buckets.get(c) ?? { category: c, value: 0, count: 0 },
     );
     const total = segments.reduce((s, x) => s + x.value, 0);
     return { segments, total };
@@ -134,6 +137,7 @@ export function ExpansionDonut({
           No expansion opps in the current selection.
         </div>
       ) : (
+        <div className="flex flex-1 flex-col">
         <div className="relative flex flex-1 items-center justify-center">
           {(() => {
             const filteredSegments = anySelected
@@ -162,7 +166,7 @@ export function ExpansionDonut({
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
               <Pie
-                data={segments}
+                data={segments.filter((s) => s.value > 0)}
                 dataKey="value"
                 nameKey="category"
                 cx="50%"
@@ -182,20 +186,22 @@ export function ExpansionDonut({
                 }
                 style={clickable ? { cursor: "pointer" } : undefined}
               >
-                {segments.map((s) => {
-                  const isSelected =
-                    selectedCategories?.has(s.category) ?? false;
-                  const dimmed = anySelected && !isSelected;
-                  return (
-                    <Cell
-                      key={s.category}
-                      fill={CATEGORY_COLORS[s.category]}
-                      stroke={isSelected ? "#1f1f1f" : "#ffffff"}
-                      strokeWidth={isSelected ? 3 : 2}
-                      fillOpacity={dimmed ? 0.35 : 1}
-                    />
-                  );
-                })}
+                {segments
+                  .filter((s) => s.value > 0)
+                  .map((s) => {
+                    const isSelected =
+                      selectedCategories?.has(s.category) ?? false;
+                    const dimmed = anySelected && !isSelected;
+                    return (
+                      <Cell
+                        key={s.category}
+                        fill={CATEGORY_COLORS[s.category]}
+                        stroke={isSelected ? "#1f1f1f" : "#ffffff"}
+                        strokeWidth={isSelected ? 3 : 2}
+                        fillOpacity={dimmed ? 0.35 : 1}
+                      />
+                    );
+                  })}
               </Pie>
               <Tooltip
                 cursor={{ fill: "transparent" }}
@@ -224,28 +230,52 @@ export function ExpansionDonut({
                   );
                 }}
               />
-              <Legend
-                verticalAlign="bottom"
-                iconType="circle"
-                wrapperStyle={{ fontSize: 12 }}
-                formatter={(value: string) => {
-                  const seg = segments.find((s) => s.category === value);
-                  if (!seg) return value;
-                  const share = total > 0 ? (seg.value / total) * 100 : 0;
-                  return (
-                    <span className="text-ink-muted">
-                      {value}{" "}
-                      <span className="text-ink-subtle">
-                        ({fmtCurrency(seg.value)} · {share.toFixed(1)}%)
-                      </span>
-                    </span>
-                  );
-                }}
-              />
             </PieChart>
           </ResponsiveContainer>
+        </div>
+
+          {/* Custom legend — only categories that have rows in the current
+              filter. Each chip is clickable when the donut is interactive. */}
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.7rem] text-ink-muted">
+            {segments
+              .filter((s) => s.value > 0)
+              .map((s) => {
+                const share = total > 0 ? (s.value / total) * 100 : 0;
+                const isSelected =
+                  selectedCategories?.has(s.category) ?? false;
+                const dim = anySelected && !isSelected;
+                const Wrapper: "button" | "span" = clickable ? "button" : "span";
+                return (
+                  <Wrapper
+                    key={s.category}
+                    {...(clickable
+                      ? {
+                          type: "button" as const,
+                          onClick: () => onCategoryClick!(s.category),
+                        }
+                      : {})}
+                    className={
+                      "inline-flex items-center gap-1.5 rounded px-1 transition-opacity " +
+                      (dim ? "opacity-50 " : "") +
+                      (clickable ? "cursor-pointer hover:opacity-100" : "")
+                    }
+                  >
+                    <span
+                      aria-hidden
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: CATEGORY_COLORS[s.category] }}
+                    />
+                    <span>{s.category}</span>
+                    <span className="text-ink-subtle">
+                      ({fmtCurrency(s.value)} · {share.toFixed(1)}%)
+                    </span>
+                  </Wrapper>
+                );
+              })}
+          </div>
         </div>
       )}
     </div>
   );
 }
+

@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Row } from "@/lib/data/types";
-import { fmtCurrency } from "@/lib/format";
+import { fmtCurrency, fmtCurrencyFull } from "@/lib/format";
 import { OthersBreakdown } from "./OthersBreakdown";
 
 type SortKey =
@@ -14,9 +14,9 @@ type SortKey =
   | "Stage"
   | "Renewal Status"
   | "Close Date (2)"
+  | "Upgrade/Downgrade Amount"
   | "Amount"
-  | "Prior Contract Value"
-  | "To_include_in_NRR";
+  | "Prior Contract Value";
 
 type SortDir = "asc" | "desc";
 
@@ -31,9 +31,13 @@ const COLS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "Stage", label: "Stage" },
   { key: "Renewal Status", label: "Renewal Stage" },
   { key: "Close Date (2)", label: "Close Date" },
+  {
+    key: "Upgrade/Downgrade Amount",
+    label: "Upgrade / Downgrade",
+    align: "right",
+  },
   { key: "Amount", label: "Amount", align: "right" },
   { key: "Prior Contract Value", label: "Prior CV", align: "right" },
-  { key: "To_include_in_NRR", label: "Projected ARR", align: "right" },
 ];
 
 function stageTone(s: string): string {
@@ -72,8 +76,8 @@ function compare(a: Row, b: Row, key: SortKey, dir: SortDir): number {
   const vb = b[key];
   let cmp: number;
   if (
+    key === "Upgrade/Downgrade Amount" ||
     key === "Amount" ||
-    key === "To_include_in_NRR" ||
     key === "Prior Contract Value"
   ) {
     cmp = toAmount(va) - toAmount(vb);
@@ -151,6 +155,14 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
     () => sorted.reduce((s, r) => s + toAmount(r["Amount"]), 0),
     [sorted],
   );
+  const totalUpgradeDowngrade = useMemo(
+    () =>
+      sorted.reduce(
+        (s, r) => s + toAmount(r["Upgrade/Downgrade Amount"]),
+        0,
+      ),
+    [sorted],
+  );
   const totalPriorCv = useMemo(
     () => sorted.reduce((s, r) => s + toAmount(r["Prior Contract Value"]), 0),
     [sorted],
@@ -162,8 +174,8 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
     } else {
       setSortKey(key);
       setSortDir(
-        key === "Amount" ||
-          key === "To_include_in_NRR" ||
+        key === "Upgrade/Downgrade Amount" ||
+          key === "Amount" ||
           key === "Prior Contract Value" ||
           key === "Close Date (2)"
           ? "desc"
@@ -182,7 +194,7 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
         <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[0.68rem] font-medium text-brand-700 ring-1 ring-brand-200">
           {sorted.length.toLocaleString()} renewal{sorted.length === 1 ? "" : "s"}
           {" · "}
-          {fmtCurrency(totalAmount)} amount · {fmtCurrency(totalPriorCv)} prior CV
+          {fmtCurrency(totalAmount)} amount
         </span>
         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[0.65rem] font-medium text-ink-muted">
           Type = Renewals only
@@ -261,6 +273,26 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
         <div className="max-h-[520px] overflow-auto">
           <table className="min-w-full text-sm">
             <thead className="sticky top-0 z-10 bg-gradient-to-b from-gray-50 to-white">
+              {/* Subtotal row — sits directly above the column labels so the
+                  user can see column sums without scrolling. Sticky with the
+                  rest of thead. */}
+              <tr className="bg-brand-50/40">
+                <td
+                  colSpan={COLS.length - 3}
+                  className="border-b border-line px-4 py-2 text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-ink-subtle"
+                >
+                  Subtotals →
+                </td>
+                <td className="border-b border-line px-4 py-2 text-right text-[0.78rem] font-semibold tabular-nums text-ink">
+                  {fmtCurrencyFull(totalUpgradeDowngrade)}
+                </td>
+                <td className="border-b border-line px-4 py-2 text-right text-[0.78rem] font-semibold tabular-nums text-ink">
+                  {fmtCurrencyFull(totalAmount)}
+                </td>
+                <td className="border-b border-line px-4 py-2 text-right text-[0.78rem] font-semibold tabular-nums text-ink">
+                  {fmtCurrencyFull(totalPriorCv)}
+                </td>
+              </tr>
               <tr>
                 {COLS.map((c) => {
                   const active = sortKey === c.key;
@@ -304,7 +336,6 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
                   const type = String(r["Type"] ?? "");
                   const dealName = String(r["Deal Name"] ?? "");
                   const account = String(r["Account Name"] ?? "");
-                  const amount = toAmount(r["Amount"]);
                   return (
                     <tr
                       key={`${dealName}-${i}`}
@@ -355,14 +386,14 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
                       <td className="px-4 py-2.5 align-top tabular-nums text-ink-muted">
                         {fmtDate(r["Close Date (2)"])}
                       </td>
+                      <td className="px-4 py-2.5 text-right align-top tabular-nums text-ink-muted">
+                        {fmtCurrencyFull(toAmount(r["Upgrade/Downgrade Amount"]))}
+                      </td>
                       <td className="px-4 py-2.5 text-right align-top tabular-nums font-medium text-ink">
-                        {fmtCurrency(amount)}
+                        {fmtCurrencyFull(toAmount(r["Amount"]))}
                       </td>
                       <td className="px-4 py-2.5 text-right align-top tabular-nums text-ink-muted">
-                        {fmtCurrency(toAmount(r["Prior Contract Value"]))}
-                      </td>
-                      <td className="px-4 py-2.5 text-right align-top tabular-nums text-ink-muted">
-                        {fmtCurrency(toAmount(r["To_include_in_NRR"]))}
+                        {fmtCurrencyFull(toAmount(r["Prior Contract Value"]))}
                       </td>
                     </tr>
                   );

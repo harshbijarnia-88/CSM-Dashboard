@@ -4,9 +4,9 @@ import clsx from "clsx";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Row } from "@/lib/data/types";
-import { fmtCurrency } from "@/lib/format";
+import { fmtCurrency, fmtCurrencyFull } from "@/lib/format";
 import {
-  forecastCategory,
+  forecastCategoryFromRow,
   type ForecastCategory,
 } from "@/lib/data/fetchExpansion";
 
@@ -14,7 +14,7 @@ import {
 // dashboard.
 const CATEGORY_ORDER: ForecastCategory[] = [
   "Pipeline",
-  "Best Case",
+  "Most Likely",
   "Commit",
   "Closed Won",
   "Closed Lost",
@@ -22,7 +22,7 @@ const CATEGORY_ORDER: ForecastCategory[] = [
 ];
 const CATEGORY_COLORS: Record<ForecastCategory, string> = {
   Pipeline: "#1f77b4",
-  "Best Case": "#3a92d4",
+  "Most Likely": "#3a92d4",
   Commit: "#56b4e9",
   "Closed Won": "#059669",
   "Closed Lost": "#DC2626",
@@ -36,7 +36,7 @@ type SortKey =
   | "forecast_category"
   | "Close Date (2)"
   | "Amount"
-  | "To_include_in_NRR";
+  | "Created Date";
 
 type SortDir = "asc" | "desc";
 
@@ -47,7 +47,11 @@ const COLS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "forecast_category", label: "Forecast Category" },
   { key: "Close Date (2)", label: "Close Date" },
   { key: "Amount", label: "Amount", align: "right" },
-  { key: "To_include_in_NRR", label: "Projected ARR", align: "right" },
+  // "Last Activity" — temporarily reads from the Created Date column. When
+  // the SF report exposes a real `LastActivityDate` column, swap this `key`
+  // for `"LastActivityDate"` (and update RAW_NUMERIC_COLS / RENAME_MAP if a
+  // rename is needed) — one-line change.
+  { key: "Created Date", label: "Last Activity" },
 ];
 
 function toAmount(v: unknown): number {
@@ -115,7 +119,7 @@ export function ExpansionOpportunitiesTable({
       () =>
         expansionRows.map((r) => ({
           ...r,
-          forecast_category: forecastCategory(String(r["Stage"] ?? "")),
+          forecast_category: forecastCategoryFromRow(r),
         })),
       [expansionRows],
     );
@@ -148,9 +152,9 @@ export function ExpansionOpportunitiesTable({
   const sorted = useMemo(() => {
     return [...filteredRows].sort((a, b) => {
       let cmp: number;
-      if (sortKey === "Amount" || sortKey === "To_include_in_NRR") {
+      if (sortKey === "Amount") {
         cmp = toAmount(a[sortKey]) - toAmount(b[sortKey]);
-      } else if (sortKey === "Close Date (2)") {
+      } else if (sortKey === "Close Date (2)" || sortKey === "Created Date") {
         const ta = new Date(String(a[sortKey] ?? "")).getTime();
         const tb = new Date(String(b[sortKey] ?? "")).getTime();
         cmp = (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
@@ -161,8 +165,8 @@ export function ExpansionOpportunitiesTable({
     });
   }, [filteredRows, sortKey, sortDir]);
 
-  const totalProjectedArr = useMemo(
-    () => sorted.reduce((s, r) => s + toAmount(r["To_include_in_NRR"]), 0),
+  const totalAmount = useMemo(
+    () => sorted.reduce((s, r) => s + toAmount(r["Amount"]), 0),
     [sorted],
   );
 
@@ -173,8 +177,8 @@ export function ExpansionOpportunitiesTable({
       setSortKey(key);
       setSortDir(
         key === "Amount" ||
-          key === "To_include_in_NRR" ||
-          key === "Close Date (2)"
+          key === "Close Date (2)" ||
+          key === "Created Date"
           ? "desc"
           : "asc",
       );
@@ -189,7 +193,7 @@ export function ExpansionOpportunitiesTable({
           Expansion Opportunities
         </div>
         <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[0.68rem] font-medium text-purple-700 ring-1 ring-purple-200">
-          {fmtCurrency(totalProjectedArr)} projected ARR
+          {fmtCurrency(totalAmount)} amount
         </span>
         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[0.65rem] font-medium text-ink-muted">
           Type = Expansion only
@@ -261,6 +265,21 @@ export function ExpansionOpportunitiesTable({
         <div className="max-h-[520px] overflow-auto">
           <table className="min-w-full text-sm">
             <thead className="sticky top-0 z-10 bg-gradient-to-b from-gray-50 to-white">
+              {/* Subtotal row — sits directly above the column labels. The
+                  Amount column is the only numeric one (Last Activity is a
+                  date), so just that cell carries a value. */}
+              <tr className="bg-purple-50/40">
+                <td
+                  colSpan={COLS.length - 2}
+                  className="border-b border-line px-4 py-2 text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-ink-subtle"
+                >
+                  Subtotals →
+                </td>
+                <td className="border-b border-line px-4 py-2 text-right text-[0.78rem] font-semibold tabular-nums text-ink">
+                  {fmtCurrencyFull(totalAmount)}
+                </td>
+                <td className="border-b border-line px-4 py-2" />
+              </tr>
               <tr>
                 {COLS.map((c) => {
                   const active = sortKey === c.key;
@@ -345,10 +364,10 @@ export function ExpansionOpportunitiesTable({
                         {fmtDate(r["Close Date (2)"])}
                       </td>
                       <td className="px-4 py-2.5 text-right align-top tabular-nums font-medium text-ink">
-                        {fmtCurrency(toAmount(r["Amount"]))}
+                        {fmtCurrencyFull(toAmount(r["Amount"]))}
                       </td>
-                      <td className="px-4 py-2.5 text-right align-top tabular-nums text-ink-muted">
-                        {fmtCurrency(toAmount(r["To_include_in_NRR"]))}
+                      <td className="px-4 py-2.5 align-top tabular-nums text-ink-muted">
+                        {fmtDate(r["Created Date"])}
                       </td>
                     </tr>
                   );
