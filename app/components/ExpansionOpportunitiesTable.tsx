@@ -36,7 +36,7 @@ type SortKey =
   | "forecast_category"
   | "Close Date (2)"
   | "Amount"
-  | "Created Date";
+  | "Last Activity";
 
 type SortDir = "asc" | "desc";
 
@@ -47,11 +47,7 @@ const COLS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "forecast_category", label: "Forecast Category" },
   { key: "Close Date (2)", label: "Close Date" },
   { key: "Amount", label: "Amount", align: "right" },
-  // "Last Activity" — temporarily reads from the Created Date column. When
-  // the SF report exposes a real `LastActivityDate` column, swap this `key`
-  // for `"LastActivityDate"` (and update RAW_NUMERIC_COLS / RENAME_MAP if a
-  // rename is needed) — one-line change.
-  { key: "Created Date", label: "Last Activity" },
+  { key: "Last Activity", label: "Last Activity" },
 ];
 
 function toAmount(v: unknown): number {
@@ -154,7 +150,7 @@ export function ExpansionOpportunitiesTable({
       let cmp: number;
       if (sortKey === "Amount") {
         cmp = toAmount(a[sortKey]) - toAmount(b[sortKey]);
-      } else if (sortKey === "Close Date (2)" || sortKey === "Created Date") {
+      } else if (sortKey === "Close Date (2)" || sortKey === "Last Activity") {
         const ta = new Date(String(a[sortKey] ?? "")).getTime();
         const tb = new Date(String(b[sortKey] ?? "")).getTime();
         cmp = (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
@@ -178,7 +174,7 @@ export function ExpansionOpportunitiesTable({
       setSortDir(
         key === "Amount" ||
           key === "Close Date (2)" ||
-          key === "Created Date"
+          key === "Last Activity"
           ? "desc"
           : "asc",
       );
@@ -367,7 +363,7 @@ export function ExpansionOpportunitiesTable({
                         {fmtCurrencyFull(toAmount(r["Amount"]))}
                       </td>
                       <td className="px-4 py-2.5 align-top tabular-nums text-ink-muted">
-                        {fmtDate(r["Created Date"])}
+                        {fmtDate(r["Last Activity"])}
                       </td>
                     </tr>
                   );
