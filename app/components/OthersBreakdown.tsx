@@ -181,19 +181,6 @@ export function OthersBreakdown({
         </div>
       </div>
 
-      {clickable ? (
-        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[0.72rem] leading-snug text-amber-800">
-          <span aria-hidden className="mt-px text-amber-600">💡</span>
-          <span>
-            Tip: Select{" "}
-            <span className="font-semibold">High Risk Renewal</span>,{" "}
-            <span className="font-semibold">Expected Churn</span>, and{" "}
-            <span className="font-semibold">Likely to Downgrade</span> to see
-            the open opportunities that are likely driving the NRR gap.
-          </span>
-        </div>
-      ) : null}
-
       {(() => {
         // Hide the "Unspecified" card — rows without a Renewal Status still
         // roll into the panel totals + healthy-share math, but the empty

@@ -62,6 +62,7 @@ export async function fetchExpansion(): Promise<FetchExpansionResult> {
  */
 export type ForecastCategory =
   | "Pipeline"
+  | "Best Case"
   | "Most Likely"
   | "Commit"
   | "Closed Won"
@@ -79,7 +80,8 @@ export function forecastCategory(stage: string): ForecastCategory {
     return "Closed Lost";
   if (s.includes("contracting") || s.includes("negotiat") || s.includes("commit"))
     return "Commit";
-  if (s.includes("most likely") || s.includes("best case")) return "Most Likely";
+  if (s.includes("best case")) return "Best Case";
+  if (s.includes("most likely")) return "Most Likely";
   if (s.includes("omitted")) return "Omitted";
   return "Pipeline";
 }
@@ -103,7 +105,8 @@ export function forecastCategoryFromRow(r: Row): ForecastCategory {
     if (sfCat === "Commit") return "Commit";
     if (sfCat === "Pipeline") return "Pipeline";
     if (sfCat === "Omitted") return "Omitted";
-    if (sfCat === "Most Likely" || sfCat === "Best Case") return "Most Likely";
+    if (sfCat === "Most Likely") return "Most Likely";
+    if (sfCat === "Best Case") return "Best Case";
   }
   return forecastCategory(stage);
 }

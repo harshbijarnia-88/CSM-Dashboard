@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Row } from "@/lib/data/types";
 import { fmtCurrency, fmtCurrencyFull } from "@/lib/format";
 import { OthersBreakdown } from "./OthersBreakdown";
@@ -22,6 +22,18 @@ type SortDir = "asc" | "desc";
 
 export type OpportunitiesTableProps = {
   rows: Row[];
+  /** Optional controlled multi-select renewal-status filter. When supplied
+   * the table reads from this set instead of its internal state, and
+   * delegates updates back via `onStatusFilterChange`. Used by the
+   * GRR Gap / Book in Risk / Renewal Upgrade drilldowns to pre-populate
+   * the filter from SectionA tile clicks. */
+  statusFilter?: Set<string>;
+  onStatusFilterChange?: (next: Set<string>) => void;
+  /** Optional controlled multi-select Stage filter. Drilldowns (e.g.
+   * % Book in Risk) use this to pre-populate the filter with only the
+   * open SF stages so the table surfaces actionable opps. */
+  stageFilter?: Set<string>;
+  onStageFilterChange?: (next: Set<string>) => void;
 };
 
 const COLS: { key: SortKey; label: string; align?: "right" }[] = [
@@ -91,32 +103,88 @@ function compare(a: Row, b: Row, key: SortKey, dir: SortDir): number {
   return dir === "asc" ? cmp : -cmp;
 }
 
-export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
+export function OpportunitiesTable({
+  rows,
+  statusFilter: controlledStatusFilter,
+  onStatusFilterChange,
+  stageFilter: controlledStageFilter,
+  onStageFilterChange,
+}: OpportunitiesTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("Amount");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [query, setQuery] = useState("");
-  // Default = expanded (primary table). User can collapse via the chevron
-  // in the section header; filter state below is preserved while hidden.
-  const [collapsed, setCollapsed] = useState(false);
+  // Default = collapsed on initial load (every table + chart on the
+  // dashboard starts hidden so the user picks what to look at). Auto-
+  // expands when a drilldown sets a status filter, via the useEffect
+  // below. User can collapse / re-expand via the chevron in the section
+  // header at any time; filter state below is preserved while hidden.
+  const [collapsed, setCollapsed] = useState(true);
   // Multi-select click-to-filter from the By Renewal Status panel.
-  // Empty set = show all renewals.
-  const [statusFilter, setStatusFilter] = useState<Set<string>>(
+  // Empty set = show all renewals. Uses controlled state when the parent
+  // passes one (e.g. for the NRR Gap drilldown); otherwise keeps its own.
+  const [internalStatusFilter, setInternalStatusFilter] = useState<Set<string>>(
     () => new Set(),
   );
-  const toggleStatus = (s: string) => {
-    setStatusFilter((curr) => {
-      const next = new Set(curr);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
+  const statusFilter = controlledStatusFilter ?? internalStatusFilter;
+  const setStatusFilter = (next: Set<string>) => {
+    if (onStatusFilterChange) onStatusFilterChange(next);
+    else setInternalStatusFilter(next);
   };
+  const toggleStatus = (s: string) => {
+    const next = new Set(statusFilter);
+    if (next.has(s)) next.delete(s);
+    else next.add(s);
+    setStatusFilter(next);
+  };
+  // If the parent pushes a non-empty filter in (e.g. NRR Gap drilldown
+  // sets three risk statuses), force-expand the table so the rows are
+  // visible immediately.
+  useEffect(() => {
+    if (controlledStatusFilter && controlledStatusFilter.size > 0) {
+      setCollapsed(false);
+    }
+  }, [controlledStatusFilter]);
+  // Multi-select Stage filter (SF opportunity stage — different column from
+  // Renewal Status). Composes via AND with the status filter and search.
+  // Same controlled/uncontrolled pattern as statusFilter — the parent
+  // can push a filter in (e.g. Book in Risk drilldown sets the open
+  // stages) and we delegate updates back via onStageFilterChange.
+  const [internalStageFilter, setInternalStageFilter] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const stageFilter = controlledStageFilter ?? internalStageFilter;
+  const setStageFilter = (next: Set<string>) => {
+    if (onStageFilterChange) onStageFilterChange(next);
+    else setInternalStageFilter(next);
+  };
+  const [stageMenuOpen, setStageMenuOpen] = useState(false);
+  useEffect(() => {
+    if (controlledStageFilter && controlledStageFilter.size > 0) {
+      setCollapsed(false);
+    }
+  }, [controlledStageFilter]);
 
   // Renewal Status is only meaningful for Renewal-type opps, so this panel is
   // narrowed to Type = "Renewals" throughout (summary, breakdown, table).
   const renewalRows = useMemo(
     () => rows.filter((r) => String(r["Type"] ?? "").trim() === "Renewals"),
     [rows],
+  );
+
+
+  // Canonical SF renewal-stage picklist, in pipeline order. Hard-coded
+  // (not computed from data) so the dropdown is stable as the team
+  // transitions stage labels in SF. Closed Won + Closed Lost are split
+  // because they're meaningfully different filters for a CSM.
+  const availableStages = useMemo(
+    () => [
+      "Renewal Anticipation",
+      "Proposal Discussion",
+      "Renewal Confirmation",
+      "Closed Won",
+      "Closed Lost",
+    ],
+    [],
   );
 
   const tableRows = useMemo(() => {
@@ -126,6 +194,11 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
         statusFilter.has(
           String(r["Renewal Status"] ?? "").trim() || "Unspecified",
         ),
+      );
+    }
+    if (stageFilter.size > 0) {
+      pool = pool.filter((r) =>
+        stageFilter.has(String(r["Stage"] ?? "").trim()),
       );
     }
     const q = query.trim().toLowerCase();
@@ -145,7 +218,7 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
       });
     }
     return pool;
-  }, [renewalRows, statusFilter, query]);
+  }, [renewalRows, statusFilter, stageFilter, query]);
 
   const sorted = useMemo(() => {
     return [...tableRows].sort((a, b) => compare(a, b, sortKey, sortDir));
@@ -261,6 +334,91 @@ export function OpportunitiesTable({ rows }: OpportunitiesTableProps) {
                 </button>
               ) : null}
             </div>
+
+            {/* Stage filter — independent of the Renewal Status cards above.
+                Stage = SF opportunity stage; Renewal Status = CSM's
+                qualitative read. Both filters compose via AND. */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setStageMenuOpen((o) => !o)}
+                aria-expanded={stageMenuOpen}
+                aria-haspopup="menu"
+                className={
+                  "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[0.75rem] font-medium transition-colors " +
+                  (stageFilter.size > 0
+                    ? "border-brand-300 bg-brand-50 text-brand-700"
+                    : "border-line bg-white text-ink-muted hover:border-brand-200 hover:bg-brand-50/40")
+                }
+              >
+                <span>Stage</span>
+                {stageFilter.size > 0 ? (
+                  <span className="rounded-full bg-brand-200 px-1.5 text-[0.65rem] font-semibold text-brand-800">
+                    {stageFilter.size}
+                  </span>
+                ) : null}
+                <span aria-hidden className="text-ink-subtle">
+                  {stageMenuOpen ? "▲" : "▼"}
+                </span>
+              </button>
+              {stageMenuOpen ? (
+                <>
+                  <div
+                    aria-hidden
+                    onClick={() => setStageMenuOpen(false)}
+                    className="fixed inset-0 z-10"
+                  />
+                  <div
+                    role="menu"
+                    className="absolute left-0 z-20 mt-1 w-60 overflow-hidden rounded-lg border border-line bg-white shadow-lg"
+                  >
+                    <div className="flex items-center justify-between border-b border-line bg-gray-50 px-3 py-1.5 text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-ink-subtle">
+                      <span>Filter by Stage</span>
+                      {stageFilter.size > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setStageFilter(new Set())}
+                          className="rounded px-1 text-[0.66rem] font-medium text-brand-700 hover:bg-brand-50"
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="max-h-60 overflow-auto py-1">
+                      {availableStages.length === 0 ? (
+                        <div className="px-3 py-2 text-[0.74rem] text-ink-subtle">
+                          No stages in current data
+                        </div>
+                      ) : (
+                        availableStages.map((s) => {
+                          const checked = stageFilter.has(s);
+                          return (
+                            <label
+                              key={s}
+                              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[0.78rem] text-ink hover:bg-brand-50/60"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  const next = new Set(stageFilter);
+                                  if (next.has(s)) next.delete(s);
+                                  else next.add(s);
+                                  setStageFilter(next);
+                                }}
+                                className="h-3.5 w-3.5 accent-brand-600"
+                              />
+                              <span className="truncate">{s}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
             {query ? (
               <span className="text-[0.7rem] tabular-nums text-ink-subtle">
                 {sorted.length.toLocaleString()} match

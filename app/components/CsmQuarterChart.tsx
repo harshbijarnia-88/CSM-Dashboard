@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { CSM_COL, CSM_LIST, QUARTER_COL, QUARTER_COLORS } from "@/lib/constants";
 import type { Row } from "@/lib/data/types";
-import { fmtCurrency, fmtPct } from "@/lib/format";
+import { fmtCurrency, fmtCurrencyFull, fmtPct } from "@/lib/format";
 
 export type CsmQuarterChartProps = {
   title: string;
@@ -135,16 +135,18 @@ export function CsmQuarterChart({
       {formulaTotals ? (
         <div className="mb-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[0.7rem] tabular-nums text-ink-subtle">
           <span>Overall:</span>
-          <span className="font-medium text-ink-muted">
-            {fmtCurrency(formulaTotals.num)}
-          </span>
+          <FormulaNumberWithTooltip
+            display={fmtCurrency(formulaTotals.num)}
+            full={fmtCurrencyFull(formulaTotals.num)}
+          />
           <span className="text-ink-subtle">
             ({formula!.numerator.label})
           </span>
           <span className="text-ink-subtle">÷</span>
-          <span className="font-medium text-ink-muted">
-            {fmtCurrency(formulaTotals.den)}
-          </span>
+          <FormulaNumberWithTooltip
+            display={fmtCurrency(formulaTotals.den)}
+            full={fmtCurrencyFull(formulaTotals.den)}
+          />
           <span className="text-ink-subtle">
             ({formula!.denominator.label})
           </span>
@@ -214,5 +216,39 @@ export function CsmQuarterChart({
         </ResponsiveContainer>
       </div>
     </div>
+  );
+}
+
+/**
+ * Instant-feedback hover popover for the chart's "Overall:" line. Uses a
+ * CSS group-hover transition so the full-precision $ value (e.g.
+ * "$4,234,567") appears below the abbreviated chip ("$4.2M") as soon as
+ * the cursor enters — no native title delay. Positioned BELOW the number
+ * because the chart card has `overflow-hidden` and a tooltip above the
+ * formula line would get clipped at the card boundary.
+ */
+function FormulaNumberWithTooltip({
+  display,
+  full,
+}: {
+  display: string;
+  full: string;
+}) {
+  return (
+    <span className="group/formula relative inline-flex">
+      <span className="cursor-help font-medium text-ink-muted underline decoration-dotted decoration-ink-subtle/60 underline-offset-2">
+        {display}
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[0.7rem] font-medium tabular-nums text-white opacity-0 shadow-lg transition-opacity duration-100 group-hover/formula:opacity-100 group-focus-within/formula:opacity-100"
+      >
+        {full}
+        <span
+          aria-hidden
+          className="absolute -top-px left-1/2 -mt-1 h-1.5 w-1.5 -translate-x-1/2 rotate-45 bg-ink"
+        />
+      </span>
+    </span>
   );
 }

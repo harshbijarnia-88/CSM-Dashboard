@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { MousePointerClick } from "lucide-react";
 import { fmtCurrency, fmtCurrencyFull, fmtPct } from "@/lib/format";
 
 export type StatCardTone =
@@ -19,6 +20,12 @@ export type StatCardProps = {
   /** Optional raw $ amount backing `secondary`. When provided, hover shows
    * the full-precision dollar value as a native tooltip. */
   secondaryRaw?: number;
+  /** When set, the card becomes clickable — hover lifts the shadow and the
+   * cursor changes to pointer. Use for cross-section drilldowns (e.g.
+   * clicking the NRR Gap tile applies a downstream filter). */
+  onClick?: () => void;
+  /** Accessible label for the click action when `onClick` is wired. */
+  onClickLabel?: string;
   className?: string;
   /**
    * When set, renders a small progress bar inside the card showing how close
@@ -61,6 +68,8 @@ export function StatCard({
   subtitle,
   secondary,
   secondaryRaw,
+  onClick,
+  onClickLabel,
   className,
   progress,
 }: StatCardProps) {
@@ -79,9 +88,30 @@ export function StatCard({
 
   return (
     <div
+      {...(onClick
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            onClick,
+            onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            },
+            "aria-label": onClickLabel,
+          }
+        : {})}
       className={clsx(
-        "group relative flex flex-col overflow-hidden rounded-xl border border-line bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,22,53,0.04)] transition hover:shadow-[0_4px_16px_-6px_rgba(15,22,53,0.08)]",
+        "group relative flex flex-col overflow-hidden rounded-xl border bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,22,53,0.04)] transition hover:shadow-[0_4px_16px_-6px_rgba(15,22,53,0.08)]",
         subtitle && "justify-between",
+        onClick
+          ? // Clickable affordance: persistent brand-tinted border + a soft
+            // brand-50 tint, lifted shadow on hover so the card feels
+            // tappable at rest. The corner chip below carries the explicit
+            // "click to filter" label.
+            "cursor-pointer border-brand-200 bg-brand-50/30 ring-1 ring-brand-100 hover:-translate-y-[1px] hover:border-brand-400 hover:bg-brand-50/60 hover:ring-brand-200"
+          : "border-line",
         className,
       )}
     >
@@ -92,6 +122,14 @@ export function StatCard({
           railClass,
         )}
       />
+      {onClick ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute right-2.5 top-2.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-100 text-brand-700 ring-1 ring-brand-200 transition-all group-hover:bg-brand-500 group-hover:text-white group-hover:ring-brand-500"
+        >
+          <MousePointerClick className="h-3 w-3" strokeWidth={2.25} />
+        </span>
+      ) : null}
       <div className="text-[0.66rem] font-semibold uppercase tracking-[0.12em] text-ink-subtle">
         {label}
       </div>

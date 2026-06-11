@@ -8,6 +8,7 @@ const CSM_COLORS: Record<string, string> = {
   "Janhvi Gupta": "#10B981",
   "Joe Huisman": "#1f77b4",
   "Saumitra Shekhar": "#D97706",
+  "Saurabh Singh": "#DB2777",
 };
 
 export type CsmFilterProps = {

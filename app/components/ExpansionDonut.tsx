@@ -29,6 +29,7 @@ export type ExpansionDonutProps = {
 
 const CATEGORY_ORDER: ForecastCategory[] = [
   "Pipeline",
+  "Best Case",
   "Most Likely",
   "Commit",
   "Closed Won",
@@ -38,6 +39,7 @@ const CATEGORY_ORDER: ForecastCategory[] = [
 
 const CATEGORY_COLORS: Record<ForecastCategory, string> = {
   Pipeline: "#1f77b4",
+  "Best Case": "#0EA5E9",
   "Most Likely": "#3a92d4",
   Commit: "#56b4e9",
   "Closed Won": "#059669",

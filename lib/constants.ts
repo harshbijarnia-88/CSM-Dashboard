@@ -3,6 +3,7 @@ export const CSM_LIST = [
   "Janhvi Gupta",
   "Joe Huisman",
   "Saumitra Shekhar",
+  "Saurabh Singh",
 ] as const;
 
 export const GRR_TARGET = 0.95;

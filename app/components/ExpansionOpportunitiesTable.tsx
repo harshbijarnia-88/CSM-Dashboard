@@ -3,17 +3,23 @@
 import clsx from "clsx";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Row } from "@/lib/data/types";
 import { fmtCurrency, fmtCurrencyFull } from "@/lib/format";
 import {
   forecastCategoryFromRow,
   type ForecastCategory,
 } from "@/lib/data/fetchExpansion";
+import {
+  fetchOppActivity,
+  type OppActivityRollup,
+} from "@/lib/data/fetchOppActivity";
 
 // Same palette as ExpansionDonut so the category colors agree across the
 // dashboard.
 const CATEGORY_ORDER: ForecastCategory[] = [
   "Pipeline",
+  "Best Case",
   "Most Likely",
   "Commit",
   "Closed Won",
@@ -22,6 +28,7 @@ const CATEGORY_ORDER: ForecastCategory[] = [
 ];
 const CATEGORY_COLORS: Record<ForecastCategory, string> = {
   Pipeline: "#1f77b4",
+  "Best Case": "#0EA5E9",
   "Most Likely": "#3a92d4",
   Commit: "#56b4e9",
   "Closed Won": "#059669",
@@ -86,16 +93,28 @@ export type ExpansionOpportunitiesTableProps = {
    * empty, the table shows all expansion categories; otherwise it narrows. */
   selectedCategories?: Set<ForecastCategory>;
   onClearCategories?: () => void;
+  /** Toggle handler — lets the table's category filter button add/remove
+   * categories from the same state the donut drives. */
+  onToggleCategory?: (cat: ForecastCategory) => void;
 };
 
 export function ExpansionOpportunitiesTable({
   rows,
   selectedCategories,
   onClearCategories,
+  onToggleCategory,
 }: ExpansionOpportunitiesTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("Amount");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [query, setQuery] = useState("");
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  // Per-opp activity rollups fetched from the revenue-os endpoint. Empty
+  // when the API is unreachable (e.g. revenue-os isn't running on the
+  // public Vercel deploy) — in that case the table degrades to the
+  // sheet's `Last Activity` column without breaking.
+  const [activity, setActivity] = useState<Record<string, OppActivityRollup>>(
+    {},
+  );
   // Section is collapsed by default. Auto-expands when the user clicks a
   // donut segment so the filtered opps surface immediately.
   const [collapsed, setCollapsed] = useState(true);
@@ -108,6 +127,30 @@ export function ExpansionOpportunitiesTable({
     [rows],
   );
 
+  // Hydrate activity for every expansion opp visible in the parent's filter
+  // window. One batched request per change in the underlying ID set; the
+  // result is keyed by Opportunity ID for O(1) lookup at render time.
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(
+        expansionRows
+          .map((r) => String(r["Opportunity ID"] ?? "").trim())
+          .filter(Boolean),
+      ),
+    );
+    if (ids.length === 0) {
+      setActivity({});
+      return;
+    }
+    let cancelled = false;
+    fetchOppActivity(ids).then((map) => {
+      if (!cancelled) setActivity(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [expansionRows]);
+
   // Stamp each row with its computed forecast category so sort + render can
   // read it as a column.
   const stampedRows: Array<Row & { forecast_category: ForecastCategory }> =
@@ -119,6 +162,23 @@ export function ExpansionOpportunitiesTable({
         })),
       [expansionRows],
     );
+
+  // Forecast categories present in the data — drives the dropdown options.
+  const availableCategories = useMemo(() => {
+    const set = new Set<ForecastCategory>();
+    for (const r of stampedRows) set.add(r.forecast_category);
+    // Canonical order matching the donut so the dropdown matches its legend.
+    const canonical: ForecastCategory[] = [
+      "Pipeline",
+      "Best Case",
+      "Most Likely",
+      "Commit",
+      "Closed Won",
+      "Closed Lost",
+      "Omitted",
+    ];
+    return canonical.filter((c) => set.has(c));
+  }, [stampedRows]);
 
   const filteredRows = useMemo(() => {
     let pool = stampedRows;
@@ -250,6 +310,88 @@ export function ExpansionOpportunitiesTable({
                 </button>
               ) : null}
             </div>
+
+            {/* Forecast Category filter — same selection state as the donut.
+                Pick a category here OR click a slice; both update the same
+                `selectedCategories` set. */}
+            {onToggleCategory ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setCategoryMenuOpen((o) => !o)}
+                  aria-expanded={categoryMenuOpen}
+                  aria-haspopup="menu"
+                  className={
+                    "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[0.75rem] font-medium transition-colors " +
+                    ((selectedCategories?.size ?? 0) > 0
+                      ? "border-purple-300 bg-purple-50 text-purple-700"
+                      : "border-line bg-white text-ink-muted hover:border-purple-200 hover:bg-purple-50/40")
+                  }
+                >
+                  <span>Forecast Category</span>
+                  {(selectedCategories?.size ?? 0) > 0 ? (
+                    <span className="rounded-full bg-purple-200 px-1.5 text-[0.65rem] font-semibold text-purple-800">
+                      {selectedCategories!.size}
+                    </span>
+                  ) : null}
+                  <span aria-hidden className="text-ink-subtle">
+                    {categoryMenuOpen ? "▲" : "▼"}
+                  </span>
+                </button>
+                {categoryMenuOpen ? (
+                  <>
+                    <div
+                      aria-hidden
+                      onClick={() => setCategoryMenuOpen(false)}
+                      className="fixed inset-0 z-10"
+                    />
+                    <div
+                      role="menu"
+                      className="absolute left-0 z-20 mt-1 w-60 overflow-hidden rounded-lg border border-line bg-white shadow-lg"
+                    >
+                      <div className="flex items-center justify-between border-b border-line bg-gray-50 px-3 py-1.5 text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-ink-subtle">
+                        <span>Filter by Forecast Category</span>
+                        {(selectedCategories?.size ?? 0) > 0 && onClearCategories ? (
+                          <button
+                            type="button"
+                            onClick={() => onClearCategories()}
+                            className="rounded px-1 text-[0.66rem] font-medium text-purple-700 hover:bg-purple-50"
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="max-h-60 overflow-auto py-1">
+                        {availableCategories.length === 0 ? (
+                          <div className="px-3 py-2 text-[0.74rem] text-ink-subtle">
+                            No categories in current data
+                          </div>
+                        ) : (
+                          availableCategories.map((c) => {
+                            const checked = selectedCategories?.has(c) ?? false;
+                            return (
+                              <label
+                                key={c}
+                                className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[0.78rem] text-ink hover:bg-purple-50/60"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => onToggleCategory(c)}
+                                  className="h-3.5 w-3.5 accent-purple-600"
+                                />
+                                <span className="truncate">{c}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
             {query ? (
               <span className="text-[0.7rem] tabular-nums text-ink-subtle">
                 {sorted.length.toLocaleString()} match
@@ -318,6 +460,13 @@ export function ExpansionOpportunitiesTable({
                   const cat = r.forecast_category as ForecastCategory;
                   const dealName = String(r["Deal Name"] ?? "");
                   const account = String(r["Account Name"] ?? "");
+                  const oppId = String(r["Opportunity ID"] ?? "").trim();
+                  const rollup = activity[oppId];
+                  const staleDays = daysSinceLastActivity(
+                    rollup?.lastActivityAt,
+                    String(r["Last Activity"] ?? "").trim(),
+                  );
+                  const isStale = staleDays === null || staleDays > 14;
                   return (
                     <tr
                       key={`${dealName}-${i}`}
@@ -328,6 +477,16 @@ export function ExpansionOpportunitiesTable({
                         {account ? (
                           <div className="mt-0.5 text-[0.72rem] text-ink-subtle">
                             {account}
+                          </div>
+                        ) : null}
+                        {isStale ? (
+                          <div className="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[0.62rem] font-medium text-amber-800 ring-1 ring-amber-200/70">
+                            <span aria-hidden>⚠</span>
+                            <span>
+                              {staleDays === null
+                                ? "No activity on record"
+                                : `Last activity ${staleDays}d ago · stale`}
+                            </span>
                           </div>
                         ) : null}
                       </td>
@@ -362,8 +521,13 @@ export function ExpansionOpportunitiesTable({
                       <td className="px-4 py-2.5 text-right align-top tabular-nums font-medium text-ink">
                         {fmtCurrencyFull(toAmount(r["Amount"]))}
                       </td>
-                      <td className="px-4 py-2.5 align-top tabular-nums text-ink-muted">
-                        {fmtDate(r["Last Activity"])}
+                      <td className="px-4 py-2.5 align-top text-ink-muted">
+                        <LastActivityCell
+                          sheetDate={r["Last Activity"]}
+                          rollup={
+                            activity[String(r["Opportunity ID"] ?? "").trim()]
+                          }
+                        />
                       </td>
                     </tr>
                   );
@@ -377,4 +541,276 @@ export function ExpansionOpportunitiesTable({
       )}
     </section>
   );
+}
+
+/**
+ * Last Activity cell — prefers the Postgres-derived rollup when available,
+ * falls back to the sheet's `Last Activity` column when the
+ * `/api/csm/opp-activity` endpoint is unreachable (e.g. on the public Vercel
+ * deploy when revenue-os isn't accessible). Renders a relative-time label
+ * + an opp-level activity tooltip on hover.
+ */
+function LastActivityCell({
+  sheetDate,
+  rollup,
+}: {
+  sheetDate: unknown;
+  rollup: OppActivityRollup | undefined;
+}) {
+  const pgDate = rollup?.lastActivityAt
+    ? new Date(rollup.lastActivityAt)
+    : null;
+  const fallback = String(sheetDate ?? "").trim();
+  const display = pgDate
+    ? relTime(pgDate)
+    : fallback
+      ? fmtDate(fallback)
+      : "—";
+  // Show the tooltip whenever we have *something* to show — Postgres
+  // rollup data, or even just the sheet's Last Activity date as context.
+  // The previous "rollup with touches14d > 0" check hid the tooltip on
+  // most rows, including ones that obviously show a date in the cell.
+  const hasPgData =
+    !!rollup &&
+    (rollup.totalTouches14d > 0 ||
+      !!rollup.lastActivityAt ||
+      !!rollup.lastOutboundEmailAt ||
+      !!rollup.lastInboundEmailAt);
+  const hasSheetDate = !!fallback;
+  const hasTooltip = hasPgData || hasSheetDate;
+
+  // Tooltip is rendered into `document.body` via a React Portal so it
+  // escapes the table's `overflow-auto` scroll container (which clips
+  // `position: absolute` children). Coords use `pageX/pageY` (= clientX +
+  // window.scrollX) so they work both inside the auto-sized iframe used
+  // by the revenue-os shell and on the standalone deploy where the page
+  // scrolls normally.
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  // Portal targets `document.body`; we resolve it after mount because SSR
+  // doesn't have a body and we want to avoid `useLayoutEffect` warnings.
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (typeof document !== "undefined") setPortalEl(document.body);
+  }, []);
+  const TOOLTIP_WIDTH = 264;
+
+  function positionFromEvent(e: { pageX: number; pageY: number }) {
+    const margin = 8;
+    const viewportRight =
+      (typeof window !== "undefined" ? window.scrollX + window.innerWidth : 0) -
+      margin;
+    const left = Math.min(viewportRight - TOOLTIP_WIDTH, e.pageX + 12);
+    const top = e.pageY + 16;
+    setCoords({ top, left });
+  }
+  function showTooltip(e: React.MouseEvent | React.FocusEvent) {
+    if ("pageX" in e) positionFromEvent(e);
+    setOpen(true);
+  }
+  function hideTooltip() {
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <span
+        onMouseEnter={hasTooltip ? showTooltip : undefined}
+        onMouseMove={hasTooltip && open ? positionFromEvent : undefined}
+        onMouseLeave={hasTooltip ? hideTooltip : undefined}
+        onFocus={hasTooltip ? showTooltip : undefined}
+        onBlur={hasTooltip ? hideTooltip : undefined}
+        tabIndex={hasTooltip ? 0 : -1}
+        className={clsx(
+          "inline-block tabular-nums",
+          hasTooltip
+            ? "cursor-help underline decoration-dotted underline-offset-2"
+            : "",
+        )}
+      >
+        {display}
+      </span>
+      {open && hasTooltip && coords && portalEl
+        ? createPortal(
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute z-[100] w-64 rounded-lg border border-line bg-white p-3 text-left shadow-lg"
+          style={{ top: coords.top, left: coords.left }}
+        >
+          {rollup && rollup.totalTouches14d > 0 ? (
+            <>
+              <div className="text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-ink-subtle">
+                Activity · last 14 days
+              </div>
+              <div className="mt-2 space-y-1 text-[0.74rem] text-ink-muted">
+                <TouchRow
+                  label="Outbound emails"
+                  value={rollup.outboundEmails14d}
+                />
+                <TouchRow
+                  label="Inbound emails"
+                  value={rollup.inboundEmails14d}
+                />
+                <TouchRow label="Calls" value={rollup.calls14d} />
+                <TouchRow label="Meetings (held)" value={rollup.meetings14d} />
+                {rollup.canceledOrNoShowMeetings14d > 0 ? (
+                  <TouchRow
+                    label="Canceled / no-show"
+                    value={rollup.canceledOrNoShowMeetings14d}
+                    tone="danger"
+                  />
+                ) : null}
+                {rollup.linkedin14d > 0 ? (
+                  <TouchRow label="LinkedIn" value={rollup.linkedin14d} />
+                ) : null}
+                {rollup.engageSteps14d > 0 ? (
+                  <TouchRow
+                    label="Engage steps"
+                    value={rollup.engageSteps14d}
+                  />
+                ) : null}
+                <TouchRow label="Other tasks" value={rollup.otherTasks14d} />
+              </div>
+            </>
+          ) : (
+            <div className="text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-ink-subtle">
+              No activity in last 14 days
+            </div>
+          )}
+          {rollup &&
+          (rollup.lastActivityAt ||
+            rollup.lastOutboundEmailAt ||
+            rollup.lastInboundEmailAt) ? (
+            <div
+              className={clsx(
+                "border-line/70 text-[0.66rem] text-ink-subtle",
+                rollup.totalTouches14d > 0
+                  ? "mt-2 border-t pt-2"
+                  : "mt-2 space-y-0.5",
+              )}
+            >
+              {rollup.lastActivityAt ? (
+                <div>
+                  Last activity:{" "}
+                  <span className="text-ink-muted">
+                    {fmtDate(rollup.lastActivityAt)}
+                  </span>
+                </div>
+              ) : null}
+              {rollup.lastOutboundEmailAt ? (
+                <div>
+                  Last outbound:{" "}
+                  <span className="text-ink-muted">
+                    {fmtDate(rollup.lastOutboundEmailAt)}
+                  </span>
+                </div>
+              ) : null}
+              {rollup.lastInboundEmailAt ? (
+                <div>
+                  Last inbound:{" "}
+                  <span className="text-ink-muted">
+                    {fmtDate(rollup.lastInboundEmailAt)}
+                  </span>
+                </div>
+              ) : null}
+              {rollup.lastMeetingAt ? (
+                <div>
+                  Last meeting:{" "}
+                  <span className="text-ink-muted">
+                    {fmtDate(rollup.lastMeetingAt)}
+                  </span>
+                </div>
+              ) : null}
+              {rollup.lastCanceledMeetingAt ? (
+                <div>
+                  Last cancellation:{" "}
+                  <span className="text-danger">
+                    {fmtDate(rollup.lastCanceledMeetingAt)}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : !hasPgData && hasSheetDate ? (
+            <div className="mt-2 text-[0.66rem] text-ink-subtle">
+              From SF{" "}
+              <span className="text-ink-muted">LastActivityDate</span> ·{" "}
+              {fmtDate(fallback)}
+              <div className="mt-1 italic text-ink-subtle/80">
+                No granular touchpoint data synced yet for this opp.
+              </div>
+            </div>
+          ) : null}
+        </div>,
+            portalEl,
+          )
+        : null}
+    </>
+  );
+}
+
+function TouchRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "danger";
+}) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <span className={tone === "danger" ? "text-danger" : ""}>{label}</span>
+      <span
+        className={clsx(
+          "font-medium",
+          tone === "danger" ? "text-danger" : "text-ink",
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Compact relative-time formatter — "3d ago", "5w ago" — for the inline
+ * cell value. Falls back to an absolute date for anything older than a
+ * year so the meaning stays clear.
+ */
+function relTime(d: Date): string {
+  const ms = Date.now() - d.getTime();
+  if (!Number.isFinite(ms) || ms < 0) return fmtDate(d.toISOString());
+  const days = Math.floor(ms / 86_400_000);
+  if (days < 1) return "today";
+  if (days === 1) return "1d ago";
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return fmtDate(d.toISOString());
+}
+
+/**
+ * Days since the most recent activity for an opp, preferring the
+ * Postgres rollup's `lastActivityAt` and falling back to the sheet's
+ * `Last Activity` column when Postgres has nothing. Returns `null` when
+ * neither source has a usable date — caller treats that as "stale".
+ */
+function daysSinceLastActivity(
+  pgIso: string | null | undefined,
+  sheetDate: string,
+): number | null {
+  const raw =
+    pgIso ??
+    (sheetDate
+      ? new Date(sheetDate).toISOString().replace("Invalid Date", "")
+      : null);
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  if (!Number.isFinite(t)) return null;
+  const days = Math.floor((Date.now() - t) / 86_400_000);
+  return days < 0 ? 0 : days;
 }

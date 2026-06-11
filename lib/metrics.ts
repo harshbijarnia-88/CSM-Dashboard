@@ -69,6 +69,13 @@ export const grrGapDollars = (rows: Row[]) =>
 export const nrrGapDollars = (rows: Row[]) =>
   NRR_TARGET * sum(rows, "Base_GRR") - sum(rows, "To_include_in_NRR");
 
+// Gap to 100% NRR — what we'd need to recover before we're net-positive
+// retention (not the 110% target, just break-even). Helps CSMs see how
+// close they are to "we're not shrinking" vs "we're growing". Positive =
+// gap to close; negative = above 100% (no gap).
+export const nrrGapTo100Dollars = (rows: Row[]) =>
+  sum(rows, "NRR_Base") - sum(rows, "To_include_in_NRR");
+
 // $ remaining to hit GRR target based on YTD GRR Actuals
 export const grrActualsGapDollars = (rows: Row[]) =>
   GRR_TARGET * sum(rows, "Base_GRR") - sum(rows, "GRR_actuals");
